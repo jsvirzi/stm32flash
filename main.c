@@ -53,6 +53,8 @@ parser_t	*parser		= NULL;
 struct port_interface *port = NULL;
 
 /* settings */
+#define DEFAULT_NETWORK_PORT (55151)
+
 struct port_options port_opts = {
 	.device			= NULL,
 	.baudRate		= SERIAL_BAUD_57600,
@@ -60,6 +62,7 @@ struct port_options port_opts = {
 	.bus_addr		= 0,
 	.rx_frame_max		= STM32_MAX_RX_FRAME,
 	.tx_frame_max		= STM32_MAX_TX_FRAME,
+	.port_id = DEFAULT_NETWORK_PORT,
 };
 
 enum actions {
@@ -87,7 +90,8 @@ char		force_binary	= 0;
 FILE		*diag;
 char		reset_flag	= 0;
 char		*filename;
-char		*gpio_seq	= NULL;
+#define DEFAULT_INIT_SEQUENCE "dtr,,,,,-rts,rts,,,,,,,,,,:-dtr,,,,,-rts,rts"
+char		*gpio_seq	= DEFAULT_INIT_SEQUENCE;
 uint32_t	start_addr	= 0;
 uint32_t	readwrite_len	= 0;
 
@@ -316,6 +320,7 @@ int main(int argc, char* argv[]) {
 		}
 	}
 
+    /* normally port is opened here. we are opening a socket and listening to/transmitting network port */
 	if (port_open(&port_opts, &port) != PORT_ERR_OK) {
 		fprintf(stderr, "Failed to open port: %s\n", port_opts.device);
 		goto close;
