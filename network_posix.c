@@ -67,6 +67,7 @@ static port_err_t network_posix_open(struct port_interface *port, struct port_op
 {
     network_interface_t *xface = network_open(ops->port_id);
     port->private = xface;
+    xface->verbose = 1;
     return (xface != NULL) ? PORT_ERR_OK : PORT_ERR_UNKNOWN;
 }
 
@@ -116,7 +117,9 @@ static void drain_udp_socket(network_interface_t *xface)
         socklen_t len = sizeof (xface->servaddr_dat);
         ssize_t n = recvfrom(xface->socket_dat, tmp_rx_buff, sizeof (tmp_rx_buff), 0, (struct sockaddr *) &xface->servaddr_dat, &len);
         for (int i = 0; i < n; ++i) { /* unconditionally wrap rx buffer if not serviced. no checking for wraps */
-            rx_data_buff[rx_data_head] = tmp_rx_buff[i];
+            uint8_t byte = tmp_rx_buff[i];
+            fprintf(stderr, "read udp packet: byte(%d) = %2.2x. head = %d\n", i, byte, rx_data_head);
+            rx_data_buff[rx_data_head] = byte;
             rx_data_head = (rx_data_head + 1) & rx_data_mask;
         }
     }
@@ -131,7 +134,7 @@ static port_err_t network_posix_read(struct port_interface *port, void *buf, siz
         while (rx_data_tail != rx_data_head) {
             uint8_t byte = rx_data_buff[rx_data_tail];
             data[index++] = byte;
-            fprintf(stderr, "net-rx %ld/%ld-byte = %2.2x\n", index, n_bytes, byte);
+            fprintf(stderr, "net-rx %ld/%ld-byte = %2.2x. head=%d, tail=%d\n", index, n_bytes, byte, rx_data_head, rx_data_tail);
             rx_data_tail = (rx_data_tail + 1) & rx_data_mask;
             if (index == n_bytes) {
                 break;
@@ -149,12 +152,13 @@ static port_err_t network_posix_write(struct port_interface *port, void *buf, si
 
     const uint8_t *pos = (const uint8_t *) buf;
 
+    fprintf(stderr, "request to write %zd bytes\n", n_bytes);
     while (n_bytes) { /* TODO timeout operation */
         n = sendto(xface->socket_dat, pos, n_bytes, 0, (const struct sockaddr *) &xface->servaddr_dat, sizeof(xface->servaddr_dat));
-        if (xface->verbose) {
+        if (xface->verbose && (n > 0)) {
             int max = n;
             if (xface->debug == 0) { max = (max <= 16) ? max : 16; } /* potentially a torrent of data only if debug */
-            for (int i = 0; i < max; ++i) { fprintf(stderr, "net-tx %d-byte = %2.2x\n", i, pos[i]); }
+            for (int i = 0; i < max; ++i) { fprintf(stderr, "net-tx %d/%ld-byte = %2.2x\n", i, n_bytes, pos[i]); }
         }
         if (n < 1)  { return PORT_ERR_UNKNOWN; }
         n_bytes -= n;

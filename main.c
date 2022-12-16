@@ -53,16 +53,22 @@ parser_t	*parser		= NULL;
 struct port_interface *port = NULL;
 
 /* settings */
-#define DEFAULT_NETWORK_PORT (55151)
+#define DEFAULT_UDP_PORT (55151)
+#define DEFAULT_SERIAL_NAME "/dev/ttyUSB2"
 
+int interface = INTERFACE_NONE;
+char interface_name[128];
+int interface_port = DEFAULT_UDP_PORT;
+
+/* depending on chosen interface, different options will be used. options below do not represent a single interface */
 struct port_options port_opts = {
-	.device			= NULL,
+	.device			= DEFAULT_SERIAL_NAME,
 	.baudRate		= SERIAL_BAUD_57600,
 	.serial_mode		= "8e1",
 	.bus_addr		= 0,
 	.rx_frame_max		= STM32_MAX_RX_FRAME,
 	.tx_frame_max		= STM32_MAX_TX_FRAME,
-	.port_id = DEFAULT_NETWORK_PORT,
+	.port_id = DEFAULT_UDP_PORT,
 };
 
 enum actions {
@@ -90,7 +96,7 @@ char		force_binary	= 0;
 FILE		*diag;
 char		reset_flag	= 0;
 char		*filename;
-#define DEFAULT_INIT_SEQUENCE "dtr,,,,,-rts,rts,,,,,,,,,,:-dtr,,,,,-rts,rts"
+#define DEFAULT_INIT_SEQUENCE "-dtr,,,,,-rts,rts,,,,,,,,,,:dtr,,,,,-rts,rts"
 char		*gpio_seq	= DEFAULT_INIT_SEQUENCE;
 uint32_t	start_addr	= 0;
 uint32_t	readwrite_len	= 0;
@@ -240,8 +246,24 @@ int main(int argc, char* argv[]) {
 	parser_err_t perr;
 	diag = stdout;
 
-	if (parse_options(argc, argv) != 0)
-		goto close;
+	snprintf(interface_name, sizeof (interface_name), "%s", DEFAULT_SERIAL_NAME);
+	for (int i = 1; i < argc; ++i) {
+	    if (strcmp(argv[i], "-serial") == 0) {
+            snprintf(interface_name, sizeof (interface_name), "%s", argv[++i]);
+            interface = INTERFACE_SERIAL;
+            port_opts.device = interface_name;
+	    } else if (strcmp(argv[i], "-udp") == 0) {
+	        interface = INTERFACE_UDP;
+	        port_opts.port_id = atoi(argv[++i]);
+	    } else if (strcmp(argv[i], "-w") == 0) {
+            action = ACT_WRITE;
+            filename = argv[++i];
+	    }
+	}
+
+//  TODO
+//	if (parse_options(argc, argv) != 0)
+//		goto close;
 
 	if (action == ACT_READ && use_stdinout) {
 		diag = stderr;
@@ -322,7 +344,7 @@ int main(int argc, char* argv[]) {
 
     /* normally port is opened here. we are opening a socket and listening to/transmitting network port */
 	if (port_open(&port_opts, &port) != PORT_ERR_OK) {
-		fprintf(stderr, "Failed to open port: %s\n", port_opts.device);
+		fprintf(stderr, "Failed to open port: %s/%d\n", port_opts.device, port_opts.port_id);
 		goto close;
 	}
 
