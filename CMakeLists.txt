@@ -15,7 +15,7 @@ add_executable(stm32flash
         i2c.c
         serial_common.c
         stm32.c
-        binary.c
-        hex.c
+        parsers/hex.c
         network_posix.c
+	parsers/binary.c
         )
