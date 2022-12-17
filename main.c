@@ -283,6 +283,8 @@ int main(int argc, char* argv[]) {
 	    }
 	}
 
+	if (port_opts.verbose) { fprintf(stderr, "verbose turned on\n"); }
+
 //  TODO due to exclusionary nature of this method (it will flag unknown options as errors),
 //  and its prevalent use of global variables, I have deprecated it
 //	if (parse_options(argc, argv) != 0) { goto close; }
