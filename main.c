@@ -55,20 +55,19 @@ struct port_interface *port = NULL;
 /* settings */
 #define DEFAULT_UDP_PORT (55151)
 #define DEFAULT_SERIAL_NAME "/dev/ttyUSB2"
-
-int interface = INTERFACE_NONE;
-char interface_name[128];
-int interface_port = DEFAULT_UDP_PORT;
+#define DEFAULT_INIT_SEQUENCE "-dtr,,,,,-rts,rts,,,,,,,,,,:dtr,,,,,-rts,rts"
 
 /* depending on chosen interface, different options will be used. options below do not represent a single interface */
 struct port_options port_opts = {
-	.device			= DEFAULT_SERIAL_NAME,
-	.baudRate		= SERIAL_BAUD_57600,
-	.serial_mode		= "8e1",
-	.bus_addr		= 0,
-	.rx_frame_max		= STM32_MAX_RX_FRAME,
-	.tx_frame_max		= STM32_MAX_TX_FRAME,
-	.port_id = DEFAULT_UDP_PORT,
+    .interface = INTERFACE_NONE,
+    .device = DEFAULT_SERIAL_NAME,
+    .baudRate = SERIAL_BAUD_57600,
+    .serial_mode = "8e1",
+    .bus_addr = 0,
+    .rx_frame_max = STM32_MAX_RX_FRAME,
+    .tx_frame_max = STM32_MAX_TX_FRAME,
+    .port_id = DEFAULT_UDP_PORT,
+    .gpio_seq = DEFAULT_INIT_SEQUENCE,
 };
 
 enum actions {
@@ -82,22 +81,18 @@ enum actions {
 	ACT_CRC
 };
 
+/* TODO fold into port_opts */
 enum actions	action		= ACT_NONE;
 int		npages		= 0;
 int             spage           = 0;
 int             no_erase        = 0;
-char		verify		= 0;
 int		retry		= 10;
-char		exec_flag	= 0;
 uint32_t	execute		= 0;
 char		init_flag	= 1;
 int		use_stdinout	= 0;
 char		force_binary	= 0;
 FILE		*diag;
 char		reset_flag	= 0;
-char		*filename;
-#define DEFAULT_INIT_SEQUENCE "-dtr,,,,,-rts,rts,,,,,,,,,,:dtr,,,,,-rts,rts"
-char		*gpio_seq	= DEFAULT_INIT_SEQUENCE;
 uint32_t	start_addr	= 0;
 uint32_t	readwrite_len	= 0;
 
@@ -246,28 +241,48 @@ int main(int argc, char* argv[]) {
 	parser_err_t perr;
 	diag = stdout;
 
-	snprintf(interface_name, sizeof (interface_name), "%s", DEFAULT_SERIAL_NAME);
+	snprintf(port_opts.interface_name, sizeof (port_opts.interface_name), "%s", DEFAULT_SERIAL_NAME);
 	for (int i = 1; i < argc; ++i) {
 	    if (strcmp(argv[i], "-serial") == 0) {
-            snprintf(interface_name, sizeof (interface_name), "%s", argv[++i]);
-            interface = INTERFACE_SERIAL;
-            port_opts.device = interface_name;
+            snprintf(port_opts.interface_name, sizeof (port_opts.interface_name), "%s", argv[++i]);
+            port_opts.interface = INTERFACE_SERIAL;
+            port_opts.device = port_opts.interface_name;
 	    } else if (strcmp(argv[i], "-udp") == 0) {
-	        interface = INTERFACE_UDP;
+            port_opts.interface = INTERFACE_UDP;
 	        port_opts.port_id = atoi(argv[++i]);
 	    } else if (strcmp(argv[i], "-w") == 0) {
             action = ACT_WRITE;
-            filename = argv[++i];
+            port_opts.filename = argv[++i];
+	    } else if (strcmp(argv[i], "-r") == 0) {
+            action = ACT_READ;
+            port_opts.filename = argv[++i];
+        } else if (strcmp(argv[i], "-v") == 0) {
+            port_opts.verify = 1;
+        } else if (strcmp(argv[i], "-b") == 0) {
+            port_opts.baudRate = serial_get_baud(strtoul(optarg, NULL, 0));
+            if (port_opts.baudRate == SERIAL_BAUD_INVALID) {
+                serial_baud_t baudrate;
+                fprintf(stderr,	"Invalid baud rate, valid options are:\n");
+                for (baudrate = SERIAL_BAUD_1200; baudrate != SERIAL_BAUD_INVALID; ++baudrate) {
+                    fprintf(stderr, " %d\n", serial_get_baud_int(baudrate));
+                }
+                return 1;
+            }
+        } else if (strcmp(argv[i], "-g") == 0) {
+            port_opts.exec_flag = 1;
+            port_opts.execute = strtoul(optarg, NULL, 0);
+            if ((port_opts.execute % 4) != 0) {
+                fprintf(stderr, "ERROR: Execution address must be word-aligned\n");
+                return 1;
+            }
 	    }
 	}
 
-//  TODO
-//	if (parse_options(argc, argv) != 0)
-//		goto close;
+//  TODO due to exclusionary nature of this method (it will flag unknown options as errors),
+//  and its prevalent use of global variables, I have deprecated it
+//	if (parse_options(argc, argv) != 0) { goto close; }
 
-	if (action == ACT_READ && use_stdinout) {
-		diag = stderr;
-	}
+	if (action == ACT_READ && use_stdinout) { diag = stderr; }
 
 	fprintf(diag, "stm32flash " VERSION "\n\n");
 	fprintf(diag, "http://stm32flash.sourceforge.net/\n\n");
@@ -295,7 +310,7 @@ int main(int argc, char* argv[]) {
 			}
 		}
 
-		if (force_binary || (perr = parser->open(p_st, filename, 0)) != PARSER_ERR_OK) {
+		if (force_binary || (perr = parser->open(p_st, port_opts.filename, 0)) != PARSER_ERR_OK) {
 			if (force_binary || perr == PARSER_ERR_INVALID_FILE) {
 				if (!force_binary) {
 					parser->close(p_st);
@@ -309,13 +324,13 @@ int main(int argc, char* argv[]) {
 					fprintf(stderr, "%s Parser failed to initialize\n", parser->name);
 					goto close;
 				}
-				perr = parser->open(p_st, filename, 0);
+				perr = parser->open(p_st, port_opts.filename, 0);
 			}
 
 			/* if still have an error, fail */
 			if (perr != PARSER_ERR_OK) {
 				fprintf(stderr, "%s ERROR: %s\n", parser->name, parser_errstr(perr));
-				if (perr == PARSER_ERR_SYSTEM) perror(filename);
+				if (perr == PARSER_ERR_SYSTEM) perror(port_opts.filename);
 				goto close;
 			}
 		}
@@ -349,7 +364,7 @@ int main(int argc, char* argv[]) {
 	}
 
 	fprintf(diag, "Interface %s: %s\n", port->name, port->get_cfg_str(port));
-	if (init_flag && init_bl_entry(port, gpio_seq)){
+	if (init_flag && init_bl_entry(port, port_opts.gpio_seq)){
 		ret = 1;
 		fprintf(stderr, "Failed to send boot enter sequence\n");
 		goto close;
@@ -455,11 +470,11 @@ int main(int argc, char* argv[]) {
 
 		fprintf(diag, "Memory read\n");
 
-		perr = parser->open(p_st, filename, 1);
+		perr = parser->open(p_st, port_opts.filename, 1);
 		if (perr != PARSER_ERR_OK) {
 			fprintf(stderr, "%s ERROR: %s\n", parser->name, parser_errstr(perr));
 			if (perr == PARSER_ERR_SYSTEM)
-				perror(filename);
+				perror(port_opts.filename);
 			goto close;
 		}
 
@@ -607,7 +622,7 @@ int main(int argc, char* argv[]) {
 				goto close;
 			}
 
-			if (verify) {
+			if (port_opts.verify) {
 				uint8_t compare[len];
 				unsigned int offset, rlen;
 
@@ -645,7 +660,7 @@ int main(int argc, char* argv[]) {
 
 			fprintf(diag,
 				"\rWrote %saddress 0x%08x (%.2f%%) ",
-				verify ? "and verified " : "",
+				port_opts.verify ? "and verified " : "",
 				addr,
 				(100.0f / size) * offset
 			);
@@ -676,7 +691,7 @@ int main(int argc, char* argv[]) {
 		ret = 0;
 
 close:
-	if (stm && exec_flag && ret == 0) {
+	if (stm && port_opts.exec_flag && ret == 0) {
 		if (execute == 0)
 			execute = stm->dev->fl_start;
 
@@ -692,15 +707,15 @@ close:
 	if (stm && reset_flag) {
 		fprintf(diag, "\nResetting device... \n");
 		fflush(diag);
-		if (init_bl_exit(stm, port, gpio_seq)) {
+		if (init_bl_exit(stm, port, port_opts.gpio_seq)) {
 			ret = 1;
 			fprintf(diag, "Reset failed.\n");
 		} else
 			fprintf(diag, "Reset done.\n");
 	} else if (port) {
 		/* Always run exit sequence if present */
-		if (gpio_seq && strchr(gpio_seq, ':'))
-			ret = gpio_bl_exit(port, gpio_seq) || ret;
+		if (port_opts.gpio_seq && strchr(port_opts.gpio_seq, ':'))
+			ret = gpio_bl_exit(port, port_opts.gpio_seq) || ret;
 	}
 
 	if (p_st  ) parser->close(p_st);
@@ -752,8 +767,8 @@ int parse_options(int argc, char *argv[])
 					return 1;
 				}
 				action = (c == 'r') ? ACT_READ : ACT_WRITE;
-				filename = optarg;
-				if (filename[0] == '-' && filename[1] == '\0') {
+                port_opts.filename = optarg;
+				if (port_opts.filename[0] == '-' && port_opts.filename[1] == '\0') {
 					use_stdinout = 1;
 					force_binary = 1;
 				}
@@ -804,7 +819,7 @@ int parse_options(int argc, char *argv[])
 				break;
 
 			case 'v':
-				verify = 1;
+				port_opts.verify = 1;
 				break;
 
 			case 'n':
@@ -812,9 +827,9 @@ int parse_options(int argc, char *argv[])
 				break;
 
 			case 'g':
-				exec_flag = 1;
-				execute   = strtoul(optarg, NULL, 0);
-				if (execute % 4 != 0) {
+				port_opts.exec_flag = 1;
+				port_opts.execute = strtoul(optarg, NULL, 0);
+				if (port_opts.execute % 4 != 0) {
 					fprintf(stderr, "ERROR: Execution address must be word-aligned\n");
 					return 1;
 				}
@@ -893,7 +908,7 @@ int parse_options(int argc, char *argv[])
 				exit(0);
 
 			case 'i':
-				gpio_seq = optarg;
+                port_opts.gpio_seq = optarg;
 				break;
 
 			case 'R':
@@ -925,7 +940,7 @@ int parse_options(int argc, char *argv[])
 		return 1;
 	}
 
-	if ((action != ACT_WRITE) && verify) {
+	if ((action != ACT_WRITE) && port_opts.verify) {
 		fprintf(stderr, "ERROR: Invalid usage, -v is only valid when writing\n");
 		show_help(argv[0]);
 		return 1;

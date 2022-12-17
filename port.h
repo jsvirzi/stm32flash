@@ -47,7 +47,14 @@ struct port_options {
 	int bus_addr;
 	int rx_frame_max;
 	int tx_frame_max;
-	unsigned int port_id; /*network socket port, for example */
+	int port_id; /*network socket port, for example */
+    int verify;
+    int exec_flag;
+    uint32_t execute;
+    char const * gpio_seq;
+    char const * filename;
+    int interface;
+    char interface_name[128];
 };
 
 /*
@@ -77,7 +84,6 @@ struct port_interface {
 };
 
 port_err_t port_open(struct port_options *ops, struct port_interface **outport);
-port_err_t port_init(int interface, char const * const dev_name, struct port_options *ops, struct port_interface **outport);
 
 enum {
     INTERFACE_NONE = 0,

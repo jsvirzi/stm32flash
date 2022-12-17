@@ -37,10 +37,10 @@ static struct port_interface *ports[] = {
 };
 #endif
 
-port_err_t port_init(int option, char const * const dev_name, struct port_options *ops, struct port_interface **outport) {
+port_err_t port_open(struct port_options *ops, struct port_interface **outport) {
     static struct port_interface *port = NULL;
     int ret = PORT_ERR_UNKNOWN;
-    switch (option) {
+    switch (ops->interface) {
         case INTERFACE_UDP:
             port = &port_network;
             ret = port->open(port, ops);
@@ -49,18 +49,11 @@ port_err_t port_init(int option, char const * const dev_name, struct port_option
 
         case INTERFACE_SERIAL:
             port = &port_serial;
-            ops->device = dev_name;
+            ops->device = ops->interface_name;
             ret = port->open(port, ops);
             *outport = port;
             break;
     }
-    return ret;
-}
-
-port_err_t port_open(struct port_options *ops, struct port_interface **outport) {
-    static struct port_interface *port = &port_network;
-    int ret = port->open(port, ops);
-    *outport = port;
     return ret;
 }
 
