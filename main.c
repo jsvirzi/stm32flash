@@ -55,7 +55,7 @@ struct port_interface *port = NULL;
 /* settings */
 #define DEFAULT_UDP_PORT (55151)
 #define DEFAULT_SERIAL_NAME "/dev/ttyUSB2"
-#define DEFAULT_INIT_SEQUENCE "dtr&-rts,rts,,,,,,:-dtr&-rts,rts,"
+#define DEFAULT_INIT_SEQUENCE "dtr&rts,-rts,,,,,,:-dtr&rts,-rts,"
 
 /* depending on chosen interface, different options will be used. options below do not represent a single interface */
 struct port_options port_opts = {
