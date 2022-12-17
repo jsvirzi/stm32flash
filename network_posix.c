@@ -67,7 +67,7 @@ static port_err_t network_posix_open(struct port_interface *port, struct port_op
 {
     network_interface_t *xface = network_open(ops->port_id);
     port->private = xface;
-    xface->verbose = 1;
+    xface->verbose = ops->verbose;
     return (xface != NULL) ? PORT_ERR_OK : PORT_ERR_UNKNOWN;
 }
 

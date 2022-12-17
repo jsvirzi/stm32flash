@@ -54,6 +54,7 @@ struct port_options {
     char const * gpio_seq;
     char const * filename;
     int interface;
+    int verbose;
     char interface_name[128];
 };
 

@@ -243,7 +243,10 @@ int main(int argc, char* argv[]) {
 
 	snprintf(port_opts.interface_name, sizeof (port_opts.interface_name), "%s", DEFAULT_SERIAL_NAME);
 	for (int i = 1; i < argc; ++i) {
-	    if (strcmp(argv[i], "-serial") == 0) {
+	    printf("i=%d. argv[i] = [%s]\n", i, argv[i]);
+	    if (strcmp(argv[i], "-verbose") == 0) {
+	        port_opts.verbose = 1;
+        } else if (strcmp(argv[i], "-serial") == 0) {
             snprintf(port_opts.interface_name, sizeof (port_opts.interface_name), "%s", argv[++i]);
             port_opts.interface = INTERFACE_SERIAL;
             port_opts.device = port_opts.interface_name;
@@ -256,6 +259,8 @@ int main(int argc, char* argv[]) {
 	    } else if (strcmp(argv[i], "-r") == 0) {
             action = ACT_READ;
             port_opts.filename = argv[++i];
+	    } else if (strcmp(argv[i], "-i") == 0) {
+            port_opts.gpio_seq = argv[++i];
         } else if (strcmp(argv[i], "-v") == 0) {
             port_opts.verify = 1;
         } else if (strcmp(argv[i], "-b") == 0) {
@@ -270,7 +275,7 @@ int main(int argc, char* argv[]) {
             }
         } else if (strcmp(argv[i], "-g") == 0) {
             port_opts.exec_flag = 1;
-            port_opts.execute = strtoul(optarg, NULL, 0);
+            port_opts.execute = strtoul(argv[++i], NULL, 0);
             if ((port_opts.execute % 4) != 0) {
                 fprintf(stderr, "ERROR: Execution address must be word-aligned\n");
                 return 1;
